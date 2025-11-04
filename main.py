@@ -1,18 +1,52 @@
 import re
 import os
 import requests
+import time
 from urllib.parse import urlparse
-from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi import FastAPI, HTTPException, Query, Depends, Request
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 from bs4 import BeautifulSoup, Tag
-from typing import Annotated
+from typing import Annotated, Callable
 from dotenv import load_dotenv
 
 load_dotenv(verbose=True)
 SECRET = os.getenv("SECRET")
 if not SECRET:
     raise ValueError("SECRET is not set in the environment variables.")
+REQUEST_TIMES_PER_MINTUE = int(os.getenv("REQUEST_TIMES_PER_MINTUE", 60))
+
+# Rate limiting configuration
+rate_limit_dict = {}
+
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next: Callable):
+        # Get client IP
+        client_ip = request.client.host if request.client else "unknown"
+        current_time = time.time()
+
+        # Clean up old entries
+        rate_limit_dict.clear()
+
+        # Check rate limit
+        if client_ip in rate_limit_dict:
+            requests = rate_limit_dict[client_ip]
+            if len(requests) >= REQUEST_TIMES_PER_MINTUE:
+                oldest_request = requests[0]
+                if current_time - oldest_request < 60:  # Within 1 minute
+                    return JSONResponse(
+                        status_code=429, content={"error": "Too many requests"}
+                    )
+                requests.pop(0)
+        else:
+            rate_limit_dict[client_ip] = []
+
+        rate_limit_dict[client_ip].append(current_time)
+        return await call_next(request)
+
 
 # 应用信息
 app = FastAPI(title="Genius Lyrics Scraper", version="0.1")
@@ -24,12 +58,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RateLimitMiddleware)
+
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
 
 async def check_auth(token: Annotated[str, Depends(oauth2_scheme)]):
     if token != SECRET:
         raise HTTPException(status_code=401, detail="Invalid token")
+
 
 # -----------------------------
 # 公共工具
@@ -168,6 +206,7 @@ def get_lyrics(
     url: str = Query(
         ..., examples=["https://genius.com/Michael-jackson-thriller-lyrics"]
     ),
+    _=Depends(check_auth),
 ):
     """
     GET /lyrics?url=<genius-lyrics-url>
