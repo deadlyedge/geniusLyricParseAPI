@@ -17,6 +17,7 @@ SECRET = os.getenv("SECRET")
 if not SECRET:
     raise ValueError("SECRET is not set in the environment variables.")
 REQUEST_TIMES_PER_MINTUE = int(os.getenv("REQUEST_TIMES_PER_MINTUE", 60))
+GENIUS_URL = "https://genius.com"
 
 # Rate limiting configuration
 rate_limit_dict = {}
@@ -72,16 +73,20 @@ async def check_auth(token: Annotated[str, Depends(oauth2_scheme)]):
 # -----------------------------
 # 公共工具
 # -----------------------------
-def is_genius_url(url: str) -> bool:
+def is_genius_path(path: str) -> bool:
     """
-    简单校验 URL 是否属于 genius.com（仅主机名匹配）。
+    简单校验 URL 是否属于 genius.com。
+    /Guns-n-roses-november-rain-lyrics
     """
     try:
-        p = urlparse(url)
-        if not p.scheme or not p.netloc:
-            return False
-        host = p.netloc.lower()
-        return host.endswith("genius.com")
+        p = urlparse(path)
+        # 检查是否/开头、首字母大写、-lyrics结尾
+        return (
+            p.path.startswith("/")
+            and p.path[1].isupper()
+            and p.path.endswith("-lyrics")
+        )
+
     except Exception:
         return False
 
@@ -203,24 +208,26 @@ def parse_lyrics(html: str) -> str:
 # -----------------------------
 @app.get("/lyrics")
 def get_lyrics(
-    url: str = Query(
-        ..., examples=["https://genius.com/Michael-jackson-thriller-lyrics"]
-    ),
+    path: str = Query(..., examples=["/Guns-n-roses-november-rain-lyrics"]),
     _=Depends(check_auth),
 ):
     """
-    GET /lyrics?url=<genius-lyrics-url>
+    GET /lyrics?path=<genius-lyrics-path>
 
     流程：
-    1. 验证 URL（is_genius_url）
+    1. 验证 URL（is_genius_path）
     2. 抓取页面（fetch_page）
     3. 解析歌词（parse_lyrics）
     4. 返回结构化 JSON 或相应的 HTTP 错误
     """
-    if not is_genius_url(url):
+    if not is_genius_path(path):
         raise HTTPException(
-            status_code=400, detail="Invalid Genius URL. Provide a URL under genius.com"
+            status_code=400,
+            detail="Invalid Genius PATH. Provide a PATH under genius.com",
         )
+
+    # 构造 URL
+    url = GENIUS_URL + path
 
     # 抓取 HTML（fetch）
     html = fetch_page(url)

@@ -1,0 +1,13 @@
+service:
+  api-genius:
+    image: "xdream76/api-genius-lyrics"
+    container_name: "api-genius-lyrics"
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8020:8001"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      TZ: 'Asia/Hong_Kong'
+      SECRET: 'https://f.zick.xyz'
+      REQUEST_TIMES_PER_MINTUE: 60
