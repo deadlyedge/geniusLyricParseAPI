@@ -80,10 +80,18 @@ def is_genius_path(path: str) -> bool:
     """
     try:
         p = urlparse(path)
-        # 检查是否/开头、首字母大写、-lyrics结尾
+        # 检查是否以 / 开头，并以 -lyrics 结尾。
+        # 对首字母执行如下规则：如果首字符是数字则跳过大小写校验；否则要求首字符为字母且为大写。
+        path_part = p.path[1:]
+        if not path_part:
+            return False
+        first_char = path_part[0]
+        if first_char.isdigit():
+            return p.path.startswith("/") and p.path.endswith("-lyrics")
         return (
             p.path.startswith("/")
-            and p.path[1].isupper()
+            and first_char.isalpha()
+            and first_char.isupper()
             and p.path.endswith("-lyrics")
         )
 
